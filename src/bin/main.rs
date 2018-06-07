@@ -1,10 +1,13 @@
+extern crate httparse;
+extern crate openssl;
+
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslStream};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::str;
+use std::sync::Arc;
 use std::thread;
-
-extern crate httparse;
 
 fn respond_hello_world(mut stream: TcpStream) {
     let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>Hello world</body></html>\r\n";
@@ -58,8 +61,9 @@ fn handle_request(stream: TcpStream, _client_addr: SocketAddr) {
     let mut req = httparse::Request::new(&mut headers);
     let _parsed = req.parse(&request_bytes);
 
-    println!("{:?}", req.method.unwrap());
-    println!("{:?}\n", req.path.unwrap());
+    println!("VERSION {:?}", req.version.unwrap());
+    println!("METHOD {:?}", req.method.unwrap());
+    println!("PATH {:?}\n", req.path.unwrap());
 
     for (_i, elem) in req.headers.iter_mut().enumerate() {
         let s = match str::from_utf8(elem.value) {
@@ -69,6 +73,9 @@ fn handle_request(stream: TcpStream, _client_addr: SocketAddr) {
 
         println!("{:?} {:?}", elem.name, s)
     }
+
+    // HTTP/1.1 301 Moved Permanently
+    // Location: http://www.example.org/index.asp
 
     let _body_length: u32 = match req
         .headers
@@ -106,14 +113,62 @@ fn handle_request(stream: TcpStream, _client_addr: SocketAddr) {
  * main
  */
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+    let mut servers = vec![];
 
-    loop {
-        match listener.accept() {
-            Ok((stream, addr)) => thread::spawn(move || {
-                handle_request(stream, addr);
-            }),
-            Err(e) => thread::spawn(move || println!("Connection failed: {:?}", e)),
-        };
+    servers.push(thread::spawn(move || {
+        println!("MOVED HTTP");
+        let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+
+        loop {
+            match listener.accept() {
+                Ok((stream, addr)) => thread::spawn(move || {
+                    handle_request(stream, addr);
+                }),
+                Err(e) => thread::spawn(move || println!("Connection failed: {:?}", e)),
+            };
+        }
+    }));
+
+    servers.push(thread::spawn(move || {
+        println!("MOVED HTTPS");
+        let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+        acceptor
+            .set_private_key_file("/etc/nginx/ssl/multidomain.key", SslFiletype::PEM)
+            .unwrap();
+        acceptor
+            .set_certificate_chain_file("/etc/nginx/ssl/multidomain.crt")
+            .unwrap();
+        acceptor.check_private_key().unwrap();
+        let acceptor = Arc::new(acceptor.build());
+
+        let listener = TcpListener::bind("0.0.0.0:8443").unwrap();
+
+        fn handle_client(mut stream: SslStream<TcpStream>) {
+            println!("ACCEPT");
+            let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>Hello world</body></html>\r\n";
+            stream.write(response).expect("Write failed");
+        }
+
+        for stream in listener.incoming() {
+            println!("INCOMING");
+            match stream {
+                Ok(stream) => {
+                    let acceptor = acceptor.clone();
+                    thread::spawn(move || {
+                        let stream = acceptor.accept(stream).unwrap();
+                        handle_client(stream);
+                    });
+                }
+                Err(_e) => {
+                    println!("connection failed");
+                }
+            }
+        }
+    }));
+
+    println!("STARTED");
+    for server in servers {
+        // Wait for the thread to finish. Returns a result.
+        let _ = server.join();
     }
 }
