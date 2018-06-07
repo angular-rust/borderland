@@ -29,7 +29,7 @@ We ([Steve](https://github.com/steverob) & [Preethi](https://github.com/PritiKum
 
 Started from ugly fun [example](ttps://github.com/PritiKumr/rust-httpd)
 
-# Moving to TCPStream, Bye Tokio!
+## Moving to TCPStream, Bye Tokio!
 
 ![](https://cdn-images-1.medium.com/freeze/max/30/1*OGxkKcM289IIglpQ6TMwdA.jpeg?q=20)
 
@@ -86,8 +86,3 @@ We did a quick micro-benchmark and we got a throughput of almost 10000 requests 
 So yeah, that’s where we are at the moment. Our next step is to enable CGI Scripting. I am looking forward to that very much as it lets us do some really cool stuff.
 
 Currently all our code lives in the `main.rs` file and hopefully as we make more progress we can break down and modularise the code better.
-
-Incase, you want to see how our project is turning out, here’s a secret link to our [**Github repo**](https://github.com/PritiKumr/rust-httpd).
-
-**P.S**  
-If you’re looking out for my Partner-in-Science, [Steve Robinson](https://medium.com/@steverob) is him!
