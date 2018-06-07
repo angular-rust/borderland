@@ -1,7 +1,7 @@
 [package]
 name = "rust-httpd"
 version = "0.1.0"
-authors = ["PritiKumr <priti922474@gmail.com>", "Steve Robinson <steve.rob@me.com>"]
+authors = ["Dudochkin Victor <dudochkin.victor@gmail.com>"]
 
 [dependencies]
 httparse = "1.2.1"
