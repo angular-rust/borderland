@@ -1,4 +1,5 @@
 # borderland
+
 Application platform powers Loadbalancers, Microservices and API Gateways
 
 ## A WebServer in Rust for fun & learning
@@ -17,8 +18,6 @@ Visit `locahost:8888` from your browser.
 
 2.  **Serve static files** - visit `localhost:8888/files/index.html` - this will serve the `index.html` file from the `www` folder in the repo root. Place any other file inside `www` and they can be served similarly (using the `/files` prefix - this will be configurable by the user in future, just like in Apache and Nginx).
 
-3.  **Execute CGI Scripts** - place any script inside the `cgi` folder and they can be executed by visiting `localhost:8888/cgi/script`. This is a very simplistic implementation. Planning to support `SCGI`. Maybe FastCGI in future.
-
 ### TODO
 
 - Reverse Proxy
@@ -30,10 +29,6 @@ We ([Steve](https://github.com/steverob) & [Preethi](https://github.com/PritiKum
 Started from ugly fun [example](ttps://github.com/PritiKumr/rust-httpd)
 
 ## Moving to TCPStream, Bye Tokio!
-
-![](https://cdn-images-1.medium.com/freeze/max/30/1*OGxkKcM289IIglpQ6TMwdA.jpeg?q=20)
-
-![](https://cdn-images-1.medium.com/max/1000/1*OGxkKcM289IIglpQ6TMwdA.jpeg)
 
 ![](https://cdn-images-1.medium.com/max/1000/1*OGxkKcM289IIglpQ6TMwdA.jpeg)
 
@@ -60,10 +55,6 @@ I’m sure if we come back to this post a few months down the line, we’re goin
 
 With Tokio gone, we looked toward Rust’s std::net module. After going through the docs and few examples, we felt this is what we should have used in the first place.
 
-Just take a look at this code —
-
-![](https://i.embed.ly/1/display/resize?url=https%3A%2F%2Favatars2.githubusercontent.com%2Fu%2F1220480%3Fv%3D3%26s%3D400&key=4fce0568f2ce49e8b54624ef71a8a5bd&width=40)
-
 We had to spend a fraction of time that we spent with Tokio in order to understand this and put these modules to use.
 
 Here’s what we did next —
@@ -77,7 +68,7 @@ Here’s what we did next —
 4.  Setup a very basic, temporary, hard-coded router.
 5.  Completed the static file server. (We’re [not able to serve PDFs](https://github.com/PritiKumr/rust-httpd/issues/3) properly for some reason.)
 6.  Concurrency by spawning new threads for incoming requests.
-7.  500 error pages when there are errors ❤ ❤
+7.  500 error pages when there are errors
 
 Even if we could have made this progress just with Tokio, I don’t think we would have felt very confident with our code. Using std::net gave us just the bare minimum letting us build things on top.
 

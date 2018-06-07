@@ -3,5 +3,13 @@ name = "rust-httpd"
 version = "0.1.0"
 authors = ["Dudochkin Victor <dudochkin.victor@gmail.com>"]
 
+[features]
+default = []
+javascript = ["mozjs_sys"]
+
+
 [dependencies]
 httparse = "1.2.1"
+wampire = { path = "ThirdParty/wampire" }
+#rand = { git = "https://github.com/rust-lang-nursery/rand", branch = "next" }
+mozjs_sys = { version = "0.51.1", optional = true }
