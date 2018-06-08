@@ -1,4 +1,5 @@
 extern crate borderland;
+extern crate conduit_mime_types;
 extern crate httparse;
 extern crate openssl;
 
@@ -7,10 +8,22 @@ use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod /*, SslStream*/};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener /*, TcpStream*/};
+use std::path::Path;
 use std::str;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
+
+static mut MIME_TYPES: Option<conduit_mime_types::Types> = None;
+
+pub fn get_mime() -> &'static mut conduit_mime_types::Types {
+    unsafe {
+        match MIME_TYPES {
+            Some(ref mut x) => &mut *x,
+            None => panic!(),
+        }
+    }
+}
 
 fn respond_hello_world<W: Write>(mut stream: W) {
     let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>Hello world</body></html>\r\n";
@@ -18,7 +31,9 @@ fn respond_hello_world<W: Write>(mut stream: W) {
 }
 
 fn serve_static_file<W: Write>(mut stream: W, path: &str) {
-    println!("{:?}", format!("www/{}", path));
+    println!("STATIC {:?}", format!("www/{}", path));
+    let mime_type = get_mime().mime_for_path(Path::new(path));
+    println!("MIME {:?}", mime_type);
     let mut file = match File::open(format!("www/{}", path)) {
         Ok(file) => file,
         Err(_) => File::open("404.html").expect("404.html file missing!"),
@@ -27,9 +42,11 @@ fn serve_static_file<W: Write>(mut stream: W, path: &str) {
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).expect("Read failed");
 
-    let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n";
-    stream.write(response).expect("Write failed");
-    stream.write(&buffer).expect("Write failed");
+    println!("\nPATH: {} LENGTH: {}\n", path, buffer.len());
+
+    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\n\r\n", mime_type);
+    stream.write(response.as_bytes()).expect("Write failed");
+    stream.write_all(&buffer).expect("Write failed");
 }
 
 fn respond_error<W: Write>(mut stream: W) {
@@ -141,6 +158,10 @@ fn handle_request<RW: Read + Write>(mut stream: RW, _client_addr: SocketAddr) {
  */
 fn main() {
     let mut servers = vec![];
+
+    unsafe {
+        MIME_TYPES = Some(conduit_mime_types::Types::new().unwrap());
+    }
 
     /*
      * http part - should force redirect to https by design

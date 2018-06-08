@@ -15,6 +15,7 @@ javascript = ["mozjs_sys"]
 [dependencies]
 httparse = "1.2.1"
 openssl = "0.10.10"
+conduit-mime-types = "0.7.3"
 
 #wampire = { path = "ThirdParty/wampire" }
 #rand = { git = "https://github.com/rust-lang-nursery/rand", branch = "next" }
