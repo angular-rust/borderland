@@ -3,6 +3,10 @@ name = "borderland"
 version = "0.1.0"
 authors = ["Dudochkin Victor <dudochkin.victor@gmail.com>"]
 
+[lib]
+name = "borderland"
+path = "src/lib.rs"
+
 [features]
 default = []
 javascript = ["mozjs_sys"]

@@ -1,20 +1,23 @@
+extern crate borderland;
 extern crate httparse;
 extern crate openssl;
 
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslStream};
+use borderland::Method;
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod /*, SslStream*/};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener /*, TcpStream*/};
 use std::str;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
-fn respond_hello_world(mut stream: TcpStream) {
+fn respond_hello_world<W: Write>(mut stream: W) {
     let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>Hello world</body></html>\r\n";
     stream.write(response).expect("Write failed");
 }
 
-fn serve_static_file(mut stream: TcpStream, path: &str) {
+fn serve_static_file<W: Write>(mut stream: W, path: &str) {
     println!("{:?}", format!("www/{}", path));
     let mut file = match File::open(format!("www/{}", path)) {
         Ok(file) => file,
@@ -29,17 +32,17 @@ fn serve_static_file(mut stream: TcpStream, path: &str) {
     stream.write(&buffer).expect("Write failed");
 }
 
-fn respond_error(mut stream: TcpStream) {
+fn respond_error<W: Write>(mut stream: W) {
     let response = b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>500 - Server Error</body></html>\r\n";
     stream.write(response).expect("Write failed");
 }
 
-fn respond_file_not_found(mut stream: TcpStream) {
+fn respond_file_not_found<W: Write>(mut stream: W) {
     let response = b"HTTP/1.1 404 File Not Found\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>404 - File Not Found</body></html>\r\n";
     stream.write(response).expect("Write failed");
 }
 
-fn read_request_head(stream: &TcpStream) -> Vec<u8> {
+fn read_request_head<T: Read>(stream: T) -> Vec<u8> {
     let mut reader = BufReader::new(stream);
     let mut buff = Vec::new();
     let mut read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
@@ -52,17 +55,44 @@ fn read_request_head(stream: &TcpStream) -> Vec<u8> {
     return buff;
 }
 
+fn handle_http_scheme<RW: Read + Write>(mut stream: RW, _client_addr: SocketAddr) {
+    let request_bytes = read_request_head(Read::by_ref(&mut stream));
+    let mut headers = [httparse::EMPTY_HEADER; 16];
+    let mut req = httparse::Request::new(&mut headers);
+    let _ = req.parse(&request_bytes);
+
+    println!("HTTP VERSION HTTP 1.{:?}", req.version.unwrap());
+
+    let host = match req.headers.iter().find(|&&header| header.name == "Host") {
+        Some(header) => str::from_utf8(header.value).unwrap(),
+        None => "",
+    };
+
+    let method = Method::from_str(req.method.unwrap());
+    let path = req.path.unwrap();
+
+    println!("HOST {:?} {:?} {}\n", host, method.unwrap(), path);
+
+    let response = format!(
+        "HTTP/1.1 301 Moved Permanently\r\nLocation: https://{}{}\r\n\r\n",
+        "localhost:8443", path
+    );
+    println!("{}", response);
+    stream.write(response.as_bytes()).expect("Write failed");
+}
+
 /**
  * routing
  */
-fn handle_request(stream: TcpStream, _client_addr: SocketAddr) {
-    let request_bytes = read_request_head(&stream);
+fn handle_request<RW: Read + Write>(mut stream: RW, _client_addr: SocketAddr) {
+    let request_bytes = read_request_head(Read::by_ref(&mut stream));
     let mut headers = [httparse::EMPTY_HEADER; 16];
     let mut req = httparse::Request::new(&mut headers);
-    let _parsed = req.parse(&request_bytes);
+    let _ = req.parse(&request_bytes);
 
     println!("VERSION {:?}", req.version.unwrap());
-    println!("METHOD {:?}", req.method.unwrap());
+    let method = Method::from_str(req.method.unwrap());
+    println!("METHOD {:?}", method.unwrap());
     println!("PATH {:?}\n", req.path.unwrap());
 
     for (_i, elem) in req.headers.iter_mut().enumerate() {
@@ -73,9 +103,6 @@ fn handle_request(stream: TcpStream, _client_addr: SocketAddr) {
 
         println!("{:?} {:?}", elem.name, s)
     }
-
-    // HTTP/1.1 301 Moved Permanently
-    // Location: http://www.example.org/index.asp
 
     let _body_length: u32 = match req
         .headers
@@ -115,14 +142,16 @@ fn handle_request(stream: TcpStream, _client_addr: SocketAddr) {
 fn main() {
     let mut servers = vec![];
 
+    /*
+     * http part - should force redirect to https by design
+     */
     servers.push(thread::spawn(move || {
-        println!("MOVED HTTP");
         let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
 
         loop {
             match listener.accept() {
-                Ok((stream, addr)) => thread::spawn(move || {
-                    handle_request(stream, addr);
+                Ok((stream, remote_addr)) => thread::spawn(move || {
+                    handle_http_scheme(stream, remote_addr);
                 }),
                 Err(e) => thread::spawn(move || println!("Connection failed: {:?}", e)),
             };
@@ -130,7 +159,6 @@ fn main() {
     }));
 
     servers.push(thread::spawn(move || {
-        println!("MOVED HTTPS");
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
         acceptor
             .set_private_key_file("/etc/nginx/ssl/multidomain.key", SslFiletype::PEM)
@@ -143,20 +171,21 @@ fn main() {
 
         let listener = TcpListener::bind("0.0.0.0:8443").unwrap();
 
-        fn handle_client(mut stream: SslStream<TcpStream>) {
-            println!("ACCEPT");
-            let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>Hello world</body></html>\r\n";
-            stream.write(response).expect("Write failed");
-        }
-
         for stream in listener.incoming() {
-            println!("INCOMING");
             match stream {
                 Ok(stream) => {
+                    let remote_addr = stream.peer_addr().unwrap();
                     let acceptor = acceptor.clone();
                     thread::spawn(move || {
-                        let stream = acceptor.accept(stream).unwrap();
-                        handle_client(stream);
+                        match acceptor.accept(stream) {
+                            Ok(stream) => thread::spawn(move || {
+                                println!("ACCEPT HTTPS. REMOTE {:?}", remote_addr);
+                                handle_request(stream, remote_addr);
+                            }),
+                            Err(_e) => thread::spawn(move || {
+                                // println!("Connection failed: {:?}", e);
+                            }),
+                        };
                     });
                 }
                 Err(_e) => {
