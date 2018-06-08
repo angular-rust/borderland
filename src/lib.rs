@@ -2,6 +2,11 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+pub mod route;
+pub mod router;
+
+pub use self::route::{Handler, Matcher, ReadWrite, Route};
+
 pub enum Method {
     OPTIONS,
     GET,
@@ -53,8 +58,4 @@ impl fmt::Debug for Method {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GET")
     }
-}
-
-pub struct Route {
-    method: Method,
 }

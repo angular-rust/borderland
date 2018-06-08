@@ -3,7 +3,7 @@ extern crate conduit_mime_types;
 extern crate httparse;
 extern crate openssl;
 
-use borderland::Method;
+use borderland::{Method, ReadWrite};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod /*, SslStream*/};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -72,7 +72,7 @@ fn read_request_head<T: Read>(stream: T) -> Vec<u8> {
     return buff;
 }
 
-fn handle_http_scheme<RW: Read + Write>(mut stream: RW, _client_addr: SocketAddr) {
+fn handle_http_scheme<T: ReadWrite>(mut stream: T, _client_addr: SocketAddr) {
     let request_bytes = read_request_head(Read::by_ref(&mut stream));
     let mut headers = [httparse::EMPTY_HEADER; 16];
     let mut req = httparse::Request::new(&mut headers);
