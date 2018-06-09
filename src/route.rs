@@ -7,22 +7,22 @@ where
 {
 }
 
-pub type Handler = fn(ReadWrite);
+pub type Handler = fn(Box<ReadWrite>);
 
 pub trait Matcher {
-    // fn summarize(&self) -> String;
+    fn fit(&self) -> bool;
 }
 
 #[allow(dead_code)]
 pub struct Route {
-    matcher: Box<Matcher>,
+    // matcher: Box<Matcher>,
     handler: Handler,
 }
 
 impl Route {
-    pub fn new(matcher: Box<Matcher>, handler: Handler) -> Route {
+    pub fn new(/*matcher: Box<Matcher>,*/ handler: Handler) -> Route {
         Route {
-            matcher: matcher,
+            // matcher: matcher,
             handler: handler,
         }
     }

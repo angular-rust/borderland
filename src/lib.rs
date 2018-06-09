@@ -2,10 +2,11 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
-pub mod route;
-pub mod router;
+mod route;
+mod router;
 
 pub use self::route::{Handler, Matcher, ReadWrite, Route};
+pub use self::router::Router;
 
 pub enum Method {
     OPTIONS,
