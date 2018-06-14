@@ -25,9 +25,13 @@ Visit `locahost:8080` from your browser.
 ## Roadmap
 
 - [x] HTTP Scheme redirect to HTTPS by design
+- [x] Moved to MIO
 - [ ] Routing
 - [ ] Session handling
 - [ ] Datastorage
 - [ ] Application Bus
 - [ ] Internal application logic
 
+## Changelog
+
+- Started profiling coz move to use MIO doesnt give good results

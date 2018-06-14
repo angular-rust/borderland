@@ -1,4 +1,20 @@
+static mut MIME_TYPES: Option<conduit_mime_types::Types> = None;
+
+pub fn get_mime() -> &'static mut conduit_mime_types::Types {
+unsafe {
+match MIME_TYPES {
+Some(ref mut x) => &mut \*x,
+None => panic!(),
+}
+}
+}
+
+    unsafe {
+        MIME_TYPES = Some(conduit_mime_types::Types::new().unwrap());
+    }
+
 # borderland
+
 Application platform powers Loadbalancers, Microservices and API Gateways
 
 ## A WebServer in Rust for fun & learning

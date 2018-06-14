@@ -1,12 +1,27 @@
+#[macro_use]
+extern crate log;
+extern crate env_logger;
+
+extern crate byteorder;
+extern crate bytes;
+extern crate httparse;
+extern crate mio;
+extern crate net2;
+extern crate slab;
+
 use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+mod connection;
 mod route;
 mod router;
+mod server;
 
+pub use self::connection::Connection;
 pub use self::route::{Handler, Matcher, ReadWrite, Route};
 pub use self::router::Router;
+pub use self::server::Server;
 
 pub enum Method {
     OPTIONS,

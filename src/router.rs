@@ -90,7 +90,10 @@ impl Router {
     fn read_request_head<T: Read>(&self, stream: T) -> Vec<u8> {
         let mut reader = BufReader::new(stream);
         let mut buff = Vec::new();
-        let mut read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
+        let mut read_bytes = reader
+            .read_until(b'\n', &mut buff)
+            .expect("reading from stream won't fail");
+
         while read_bytes > 0 {
             read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
             if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
@@ -135,58 +138,64 @@ impl Router {
         let request_bytes = self.read_request_head(Read::by_ref(&mut stream));
         let mut headers = [httparse::EMPTY_HEADER; 16];
         let mut req = httparse::Request::new(&mut headers);
-        let _ = req.parse(&request_bytes);
-
-        println!("HTTP VERSION HTTP 1.{:?}", req.version.unwrap());
-
-        let host = match req.headers.iter().find(|&&header| header.name == "Host") {
-            Some(header) => str::from_utf8(header.value).unwrap(),
-            None => "",
-        };
-
-        let method = Method::from_str(req.method.unwrap());
-        let path = req.path.unwrap();
-
-        println!("HOST {:?} {:?} {}\n", host, method.unwrap(), path);
-
-        for (_i, elem) in req.headers.iter_mut().enumerate() {
-            let s = match str::from_utf8(elem.value) {
-                Ok(v) => v,
-                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-            };
-
-            println!("{:?} {:?}", elem.name, s)
-        }
-
-        let _body_length: u32 = match req
-            .headers
-            .iter()
-            .find(|&&header| header.name == "Content-Length")
-        {
-            Some(header) => str::from_utf8(header.value).unwrap().parse().unwrap(),
-            None => 0,
-        };
-
-        println!("BODY LENGTH {:?}", _body_length);
-
-        // let request_body = read_request_body();
+        req.parse(&request_bytes).unwrap();
 
         match req.path {
-            Some(path) => {
-                if path.starts_with("/files") {
-                    self.serve_static_file(stream, &path[7..]);
-                } else if path == "/api/v1" {
-                    self.respond_hello_world(stream);
-                /*} else if path.starts_with("/cgi") {
-                // DANGER CODE - JUST FOR TESTING
-                handle_cgi_script(req, stream, client_addr, &path[5..]);*/
-                } else {
-                    self.respond_file_not_found(stream);
+            Some(ref path) => {
+                println!("HTTP VERSION HTTP 1.{:?}", req.version.unwrap());
+
+                let host = match req.headers.iter().find(|&&header| header.name == "Host") {
+                    Some(header) => str::from_utf8(header.value).unwrap(),
+                    None => "",
+                };
+
+                let method = Method::from_str(req.method.unwrap());
+
+                println!("HOST {:?} {:?} {}\n", host, method.unwrap(), path);
+
+                for (_i, elem) in req.headers.iter_mut().enumerate() {
+                    let s = match str::from_utf8(elem.value) {
+                        Ok(v) => v,
+                        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+                    };
+
+                    println!("{:?} {:?}", elem.name, s)
                 }
+
+                let _body_length: u32 = match req
+                    .headers
+                    .iter()
+                    .find(|&&header| header.name == "Content-Length")
+                {
+                    Some(header) => str::from_utf8(header.value).unwrap().parse().unwrap(),
+                    None => 0,
+                };
+
+                println!("BODY LENGTH {:?}", _body_length);
+
+                // let request_body = read_request_body();
+
+                match req.path {
+                    Some(path) => {
+                        if path.starts_with("/files") {
+                            self.serve_static_file(stream, &path[7..]);
+                        } else if path == "/api/v1" {
+                            self.respond_hello_world(stream);
+                        /*} else if path.starts_with("/cgi") {
+                    // DANGER CODE - JUST FOR TESTING
+                    handle_cgi_script(req, stream, client_addr, &path[5..]);*/
+                        } else {
+                            self.respond_file_not_found(stream);
+                        }
+                    }
+                    None => {
+                        self.respond_error(stream);
+                    }
+                };
             }
             None => {
-                self.respond_error(stream);
+                println!("ROUTER ERROR");
             }
-        };
+        }
     }
 }
