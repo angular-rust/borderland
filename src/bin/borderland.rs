@@ -1,4 +1,4 @@
-#[macro_use]
+// #[macro_use]
 extern crate log;
 
 extern crate env_logger;
@@ -19,9 +19,9 @@ use net2::unix::UnixTcpBuilderExt;
 use net2::TcpBuilder;
 
 use mio::net::*;
-use mio::{PollOpt, Ready, Token};
+// use mio::{PollOpt, Ready, Token};
 
-use bytes::{ByteBuf, MutByteBuf};
+// use bytes::{ByteBuf, MutByteBuf};
 
 use mio::Poll;
 use std::net::SocketAddr;
@@ -213,7 +213,7 @@ fn main() {
     // figure out why something is not working correctly.
     env_logger::init();
 
-    let use_st: u32 = env::var("ST").unwrap_or("0".to_string()).parse().unwrap();
+    // let use_st: u32 = env::var("ST").unwrap_or("0".to_string()).parse().unwrap();
 
     let res_size = env::var("RES_SIZE")
         .unwrap_or("0".to_string())
@@ -255,7 +255,7 @@ fn main() {
     // let res = ResponseData { data: res_bytes };
 
     let threads = env::var("THREADS")
-        .unwrap_or("1".to_string())
+        .unwrap_or("2".to_string())
         .parse()
         .unwrap();
     println!("multi-threaded server starting: {} threads", threads);

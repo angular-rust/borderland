@@ -35,3 +35,17 @@ Visit `locahost:8080` from your browser.
 ## Changelog
 
 - Started profiling coz move to use MIO doesnt give good results
+
+## Benchmark
+
+```bash
+$ab -n 5000 -kc 500 http://127.0.0.1:8000/
+
+...
+
+Requests per second:    14109.94 [#/sec] (mean)
+Time per request:       35.436 [ms] (mean)
+Time per request:       0.071 [ms] (mean, across all concurrent requests)
+```
+
+It's sad (((

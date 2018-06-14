@@ -3,3 +3,6 @@
 Cargo.lock
 ThirdParty
 .idea
+callgrind.out
+cachegrind.out
+oprofile_data

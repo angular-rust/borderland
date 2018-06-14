@@ -2,11 +2,11 @@ extern crate httparse;
 
 use std::collections::VecDeque;
 use std::io;
-use std::io::prelude::*;
-use std::io::{BufRead, BufReader, Error, ErrorKind, Read, Write};
+// use std::io::prelude::*;
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::rc::Rc;
 
-use byteorder::{BigEndian, ByteOrder};
+// use byteorder::{BigEndian, ByteOrder};
 
 use mio::net::TcpStream;
 use mio::unix::UnixReady;
@@ -58,7 +58,7 @@ pub struct Connection {
 
     // track whether a read received `WouldBlock` and store the number of
     // byte we are supposed to read
-    read_continuation: Option<u64>,
+    // read_continuation: Option<u64>,
 
     // track whether a write received `WouldBlock`
     write_continuation: bool,
@@ -74,27 +74,27 @@ impl Connection {
             token: token,
             interest: Ready::from(UnixReady::hup()),
             send_queue: VecDeque::with_capacity(32),
-            read_continuation: None,
+            // read_continuation: None,
             write_continuation: false,
             proto: Proto::NONE,
         }
     }
 
-    fn read_request_head<T: Read>(stream: T) -> Vec<u8> {
-        let mut reader = BufReader::new(stream);
-        let mut buff = Vec::new();
-        let mut read_bytes = reader
-            .read_until(b'\n', &mut buff)
-            .expect("reading from stream won't fail");
+    // fn read_request_head<T: Read>(stream: T) -> Vec<u8> {
+    //     let mut reader = BufReader::new(stream);
+    //     let mut buff = Vec::new();
+    //     let mut read_bytes = reader
+    //         .read_until(b'\n', &mut buff)
+    //         .expect("reading from stream won't fail");
 
-        while read_bytes > 0 {
-            read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
-            if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
-                break;
-            }
-        }
-        return buff;
-    }
+    //     while read_bytes > 0 {
+    //         read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
+    //         if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
+    //             break;
+    //         }
+    //     }
+    //     return buff;
+    // }
 
     pub fn hup(&mut self, poll: &mut Poll, dereg: bool) -> io::Result<()> {
         match self.sock.shutdown(Shutdown::Both) {
@@ -122,7 +122,7 @@ impl Connection {
     ///
     /// The recieve buffer is sent back to `Server` so the message can be broadcast to all
     /// listening connections.
-    pub fn readable(&mut self) -> io::Result<Option<Vec<u8>>> {
+    pub fn readable(&mut self, poll: &mut Poll) -> io::Result<Option<Vec<u8>>> {
         let local_addr = self.sock.local_addr().unwrap();
         let peer_addr = self.sock.peer_addr().unwrap();
 
@@ -134,118 +134,63 @@ impl Connection {
             peer_addr,
         );
 
-        // let msg_len = match self.read_message_length()? {
-        //     None => {
-        //         return Ok(None);
-        //     }
-        //     Some(n) => n,
-        // };
+        {
+            // UFCS: resolve "multiple applicable items in scope [E0034]" error
+            let sock_ref = <TcpStream as Read>::by_ref(&mut self.sock);
 
-        // if msg_len == 0 {
-        //     debug!("message is zero bytes; token={:?}", self.token);
-        //     return Ok(None);
-        // }
+            // Read header
+            let mut reader = BufReader::new(sock_ref);
+            let mut buff = Vec::new();
 
-        // let msg_len = msg_len as usize;
+            let mut read_bytes = reader
+                .read_until(b'\n', &mut buff)
+                .expect("reading from stream won't fail");
 
-        // debug!("Expected message length is {}", msg_len);
-
-        // Here we allocate and set the length with unsafe code. The risks of this are discussed
-        // at https://stackoverflow.com/a/30979689/329496 and are mitigated as recv_buf is
-        // abandoned below if we don't read msg_leg bytes from the socket
-        let msg_len = 10 as usize;
-        let mut recv_buf: Vec<u8> = Vec::with_capacity(msg_len);
-        unsafe {
-            recv_buf.set_len(msg_len);
-        }
-
-        // UFCS: resolve "multiple applicable items in scope [E0034]" error
-        let sock_ref = <TcpStream as Read>::by_ref(&mut self.sock);
-
-        // Read header
-        let mut reader = BufReader::new(sock_ref);
-        let mut buff = Vec::new();
-
-        let mut read_bytes = reader
-            .read_until(b'\n', &mut buff)
-            .expect("reading from stream won't fail");
-
-        while read_bytes > 0 {
-            read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
-            if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
-                break;
+            while read_bytes > 0 {
+                read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
+                if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
+                    break;
+                }
             }
+
+            // let s = match str::from_utf8(&buff) {
+            //     Ok(v) => v,
+            //     Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            // };
+
+            // println!("REQUEST: \n{}", s);
+
+            let mut headers = [httparse::EMPTY_HEADER; 16];
+            let mut req = httparse::Request::new(&mut headers);
+            let _ = req.parse(&buff);
+
+            // println!("HTTP VERSION HTTP 1.{:?}", req.version.unwrap());
+
+            let host = match req.headers.iter().find(|&&header| header.name == "Host") {
+                Some(header) => str::from_utf8(header.value).unwrap(),
+                None => "",
+            };
+
+            // let method = Method::from_str(req.method.unwrap());
+            let path = req.path.unwrap();
+
+            // println!("HOST {:?} {:?} {}\n", host, method.unwrap(), path);
+            // println!("HOST {:?} {}\n", host, path);
+
+            // for (_i, elem) in req.headers.iter_mut().enumerate() {
+            //     let s = match str::from_utf8(elem.value) {
+            //         Ok(v) => v,
+            //         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            //     };
+
+            //     println!("HEADER {:?} {:?}", elem.name, s)
+            // }
         }
 
-        // let s = match str::from_utf8(&buff) {
-        //     Ok(v) => v,
-        //     Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-        // };
+        self.interest.insert(Ready::writable());
+        self.interest.remove(Ready::readable());
+        let _ = self.reregister(poll);
 
-        // println!("REQUEST: \n{}", s);
-
-        let mut headers = [httparse::EMPTY_HEADER; 16];
-        let mut req = httparse::Request::new(&mut headers);
-        let _ = req.parse(&buff);
-
-        println!("HTTP VERSION HTTP 1.{:?}", req.version.unwrap());
-
-        let host = match req.headers.iter().find(|&&header| header.name == "Host") {
-            Some(header) => str::from_utf8(header.value).unwrap(),
-            None => "",
-        };
-
-        // let method = Method::from_str(req.method.unwrap());
-        let path = req.path.unwrap();
-
-        // println!("HOST {:?} {:?} {}\n", host, method.unwrap(), path);
-        println!("HOST {:?} {}\n", host, path);
-
-        // for (_i, elem) in req.headers.iter_mut().enumerate() {
-        //     let s = match str::from_utf8(elem.value) {
-        //         Ok(v) => v,
-        //         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-        //     };
-
-        //     println!("HEADER {:?} {:?}", elem.name, s)
-        // }
-
-        // match sock_ref.take(msg_len as u64).read(&mut recv_buf) {
-        //     Ok(n) => {
-        //         debug!("CONN : we read {} bytes", n);
-
-        //         // TODO handle a read continuation here
-        //         if n < msg_len as usize {
-        //             return Err(Error::new(
-        //                 ErrorKind::InvalidData,
-        //                 "Did not read enough bytes",
-        //             ));
-        //         }
-
-        //         self.read_continuation = None;
-
-        //         Ok(Some(recv_buf.to_vec()))
-        //     }
-        //     Err(e) => {
-        //         if e.kind() == ErrorKind::WouldBlock {
-        //             debug!("CONN : read encountered WouldBlock");
-
-        //             // We are being forced to try again, but we already read the two bytes off of the
-        //             // wire that determined the length. We need to store the message length so we can
-        //             // resume next time we get readable.
-        //             self.read_continuation = Some(msg_len as u64);
-        //             Ok(None)
-        //         } else {
-        //             error!(
-        //                 "Failed to read buffer for token {:?}, error: {}",
-        //                 self.token, e
-        //             );
-        //             Err(e)
-        //         }
-        //     }
-        // }
-
-        // Ok(Some(recv_buf.to_vec()))
         let msg = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>Hello world</body></html>\r\n";
         Ok(Some(msg.to_vec()))
     }
@@ -256,15 +201,19 @@ impl Connection {
     /// in write events.
     /// TODO: Figure out if sending more than one message is optimal. Maybe we should be trying to
     /// flush until the kernel sends back EAGAIN?
-    pub fn writable(&mut self) -> io::Result<()> {
-        self.send_queue
-            .pop_front()
-            .ok_or(Error::new(ErrorKind::Other, "Could not pop send queue"))
-            .and_then(|buf| self.write_message(buf))?;
+    pub fn writable(&mut self, poll: &mut Poll) -> io::Result<()> {
+        // self.send_queue
+        //     .pop_front()
+        //     .ok_or(Error::new(ErrorKind::Other, "Could not pop send queue"))
+        //     .and_then(|buf| self.write_message(buf))?;
 
-        if self.send_queue.is_empty() {
-            self.interest.remove(Ready::writable());
-        }
+        // if self.send_queue.is_empty() {
+        //     self.interest.remove(Ready::writable());
+        // }
+
+        self.interest.insert(Ready::readable());
+        self.interest.remove(Ready::writable());
+        let _ = self.reregister(poll);
 
         Ok(())
     }

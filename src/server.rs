@@ -116,40 +116,62 @@ impl Server {
 
         let event = Ready::from(event);
 
-        // A read event for our `Server` token means we are establishing a new connection. A read
-        // event for any other token should be handed off to that connection.
-        if event.is_readable() {
-            trace!("Read event for {:?}", token);
-            if self.token == token {
-                self.accept(poll);
-            } else {
-                match self.readable(token) {
-                    Ok(()) => {
-                        debug!("SHOULD HUP FOR HTTP {:?}", token);
-                        let _ = self.conn_hup(poll, token);
-                        return;
-                    }
-                    Err(e) => {
-                        warn!("Read event failed for {:?}: {:?}", token, e);
-                        self.remove_token(token);
-                        return;
-                    }
-                }
-            }
-        }
-
         // We never expect a write event for our `Server` token . A write event for any other token
         // should be handed off to that connection.
         if event.is_writable() {
-            trace!("Write event for {:?}", token);
+            // println!("### WRITE EVENT FOR {:?}", token);
             assert!(self.token != token, "Received writable event for Server");
 
-            match self.connection(token).writable() {
-                Ok(()) => {}
+            /// Forward a readable event to an established connection.
+            ///
+            /// Connections are identified by the token provided to us from the poller. Once a read has
+            /// finished, push the receive buffer into the all the existing connections so we can
+            /// broadcast.
+            match self.connection(token).writable(poll) {
+                Ok(()) => {
+                    let message = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>Hello world</body></html>\r\n";
+                    let rc_message = Rc::new(message.to_vec());
+                    self.connection(token)
+                        .send_message(rc_message.clone())
+                        .unwrap();
+
+                    // while let Some(message) = self.connection(token).readable()? {
+                    // let rc_message = Rc::new(message);
+                    // self.connection(token).send_message(rc_message.clone())?;
+                    // Echo the message too all connected clients.
+                    // for c in self.conns.iter_mut() {
+                    //     c.send_message(rc_message.clone())?;
+                    // }
+                    // }
+
+                    // println!("SHOULD HUP FOR HTTP {:?}", token);
+                    let _ = self.conn_hup(poll, token);
+                    return;
+                }
                 Err(e) => {
                     warn!("Write event failed for {:?}, {:?}", token, e);
                     self.remove_token(token);
                     return;
+                }
+            }
+        }
+
+        // A read event for our `Server` token means we are establishing a new connection. A read
+        // event for any other token should be handed off to that connection.
+        if event.is_readable() {
+            trace!("### READ EVENT FOR {:?}", token);
+            if self.token == token {
+                self.accept(poll);
+            } else {
+                let conn = self.connection(token);
+                match conn.readable(poll).unwrap() {
+                    // should return empty message and keep it inside connection to reduce data movement as it unused
+                    Some(message) => {
+                        // println!("GOT MESSAGE {}", String::from_utf8_lossy(&message));
+                        // let rc_message = Rc::new(message);
+                        // conn.send_message(rc_message.clone()).unwrap();
+                    }
+                    None => {}
                 }
             }
         }
@@ -211,40 +233,6 @@ impl Server {
                 }
             }
         }
-    }
-
-    /// Forward a readable event to an established connection.
-    ///
-    /// Connections are identified by the token provided to us from the poller. Once a read has
-    /// finished, push the receive buffer into the all the existing connections so we can
-    /// broadcast.
-    fn readable(&mut self, token: Token) -> io::Result<()> {
-        debug!(
-            "SERVER CONN READABLE; token={:?} {}",
-            token,
-            self.conns.len()
-        );
-
-        let conn = self.connection(token);
-        match conn.readable()? {
-            Some(message) => {
-                // println!("GOT MESSAGE {}", String::from_utf8_lossy(&message));
-                let rc_message = Rc::new(message);
-                conn.send_message(rc_message.clone())?;
-            }
-            None => {}
-        }
-
-        // while let Some(message) = self.connection(token).readable()? {
-        // let rc_message = Rc::new(message);
-        // self.connection(token).send_message(rc_message.clone())?;
-        // Echo the message too all connected clients.
-        // for c in self.conns.iter_mut() {
-        //     c.send_message(rc_message.clone())?;
-        // }
-        // }
-
-        Ok(())
     }
 
     /// Find a connection in the slab using the given token.

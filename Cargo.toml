@@ -33,3 +33,6 @@ flamer = "^0.2.2"
 #rand = { git = "https://github.com/rust-lang-nursery/rand", branch = "next" }
 
 mozjs_sys = { version = "0.51.1", optional = true }
+
+[profile.release]
+debug = true
