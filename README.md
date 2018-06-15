@@ -35,6 +35,12 @@ Visit `locahost:8080` from your browser.
 ## Changelog
 
 - Started profiling coz move to use MIO doesnt give good results
+- HTTP to HTTPS redirect by design
+- HTTPS part and threading
+- Moved to MIO event based handling
+- Detection plain HTTP by magic (similar as unix `file` command)
+- Headers dump
+- Small fixes to proper static content handling
 
 ## Benchmark
 
