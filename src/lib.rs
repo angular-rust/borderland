@@ -7,6 +7,7 @@ extern crate bytes;
 extern crate httparse;
 extern crate mio;
 extern crate net2;
+extern crate openssl;
 extern crate slab;
 
 use std::fmt;

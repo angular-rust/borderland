@@ -28,6 +28,7 @@ use std::net::SocketAddr;
 
 use borderland::*;
 use std::fmt::Write;
+use std::thread;
 
 // extern crate conduit_mime_types;
 // extern crate httparse;
@@ -87,8 +88,6 @@ use std::fmt::Write;
 //         }
 //     }
 // }
-
-use std::thread;
 
 pub fn write_str(dest: &mut String, s: &str) {
     write!(dest, "{}", s)

@@ -1,6 +1,8 @@
 # borderland
 
 Application platform powers Loadbalancers, Microservices and API Gateways
+[![Build Status](https://travis-ci.org/ohyo-io/borderland.svg)](https://travis-ci.org/ohyo-io/borderland)
+[![License](https://img.shields.io/badge/License-BSD2-blue.svg)](LICENSE)
 
 <p align="center">
     <img src="https://raw.githubusercontent.com/wiki/ohyo-io/borderland/images/logo_borderland.png" alt="Borderland logo" width="256" />
@@ -55,3 +57,9 @@ Time per request:       0.071 [ms] (mean, across all concurrent requests)
 ```
 
 It's sad (((
+
+## Legal
+
+### License
+
+This work is licensed under the MIT license. See [LICENSE](./LICENSE) for details.

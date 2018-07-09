@@ -3,8 +3,10 @@ extern crate httparse;
 use std::collections::VecDeque;
 use std::io;
 // use std::io::prelude::*;
+use openssl::ssl::SslAcceptor;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::rc::Rc;
+use std::sync::Arc;
 
 // use byteorder::{BigEndian, ByteOrder};
 
@@ -15,6 +17,7 @@ use mio::{Poll, PollOpt, Ready, Token};
 use std::fmt;
 use std::net::Shutdown;
 use std::str;
+use std::thread;
 
 const READ_WRITE_BUF_CAP: usize = 65536;
 
@@ -77,6 +80,38 @@ const MAGIC_METHODS: [&str; 9] = [
     "OPT", "GET", "POS", "PUT", "DEL", "HEA", "TRA", "CON", "PAT",
 ]; // names: [&str; 3]
 
+struct SocketWrapper<T> {
+    inner: T,
+}
+
+impl<T: Read + Write> SocketWrapper<T> {
+    pub fn new(inner: T) -> SocketWrapper<T> {
+        SocketWrapper { inner: inner }
+    }
+}
+
+impl<T: Read + Write> Read for SocketWrapper<T> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl<T: Read + Write> Write for SocketWrapper<T> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl<T: Read + Write> fmt::Debug for SocketWrapper<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "GET")
+    }
+}
+
 impl Connection {
     pub fn new(sock: TcpStream, token: Token) -> Connection {
         Connection {
@@ -91,22 +126,6 @@ impl Connection {
             proto: Proto::NONE,
         }
     }
-
-    // fn read_request_head<T: Read>(stream: T) -> Vec<u8> {
-    //     let mut reader = BufReader::new(stream);
-    //     let mut buff = Vec::new();
-    //     let mut read_bytes = reader
-    //         .read_until(b'\n', &mut buff)
-    //         .expect("reading from stream won't fail");
-
-    //     while read_bytes > 0 {
-    //         read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
-    //         if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
-    //             break;
-    //         }
-    //     }
-    //     return buff;
-    // }
 
     pub fn hup(&mut self, poll: &mut Poll, dereg: bool) -> io::Result<()> {
         match self.sock.shutdown(Shutdown::Both) {
@@ -128,117 +147,168 @@ impl Connection {
         Ok(())
     }
 
+    fn read_request_head<T: Read>(stream: T) -> Vec<u8> {
+        let mut reader = BufReader::new(stream);
+        let mut buff = Vec::new();
+        let mut read_bytes = reader
+            .read_until(b'\n', &mut buff)
+            .expect("reading from stream won't fail");
+
+        while read_bytes > 0 {
+            read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
+            if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
+                break;
+            }
+        }
+        return buff;
+    }
+
     /// Handle read event from poller.
     ///
     /// The Handler must continue calling until None is returned.
     ///
     /// The recieve buffer is sent back to `Server` so the message can be broadcast to all
     /// listening connections.
-    pub fn readable(&mut self, poll: &mut Poll) -> io::Result<Option<Vec<u8>>> {
-        // let local_addr = self.sock.local_addr().unwrap();
-        // let peer_addr = self.sock.peer_addr().unwrap();
+    pub fn readable(
+        &mut self,
+        poll: &mut Poll,
+        acceptor: &Arc<SslAcceptor>,
+    ) -> io::Result<Option<Vec<u8>>> {
+        let local_addr = self.sock.local_addr().unwrap();
+        let remote_addr = self.sock.peer_addr().unwrap();
 
-        // debug!(
-        //     "PROTOCOL {} ADDR {}:{} -> {}",
-        //     self.proto,
-        //     local_addr.ip(),
-        //     local_addr.port(),
-        //     peer_addr,
-        // );
+        debug!(
+            "PROTOCOL {} ADDR {}:{} -> {}",
+            self.proto,
+            local_addr.ip(),
+            local_addr.port(),
+            remote_addr,
+        );
 
         let mut buf = self.mut_buf.take().unwrap();
-        match self.sock.read(unsafe { buf.bytes_mut() }) {
-            Ok(n) => {
-                // println!("CONN : we read {} bytes!", n);
-                unsafe {
-                    buf.advance_mut(n);
-                }
 
-                // Detect the proto is unsecure by MAGIC three bytes of HTTP proto when connection initiated
-                if self.proto == Proto::NONE {
-                    let is_plain = {
-                        let tri = String::from_utf8_lossy(&buf[0..3]);
+        {
+            // UFCS: resolve "multiple applicable items in scope [E0034]" error
+            // let sock_ref = <TcpStream as Read>::by_ref(&mut self.sock);
 
-                        let ret = match MAGIC_METHODS.iter().find(|&&magic| magic == tri) {
-                            Some(_) => true,
-                            None => false,
-                        };
-                        ret
-                    };
+            // Read header
+            let mut wrapper = SocketWrapper::new(&mut self.sock);
 
-                    if is_plain {
-                        // SHOULD TO CHECK "Connection: Upgrade" for websocket
-                        self.proto = Proto::HTTP;
+            let res = match wrapper.read(unsafe { buf.bytes_mut() }) {
+                Ok(n) => {
+                    // println!("CONN : we read {} bytes!", n);
+                    unsafe {
+                        buf.advance_mut(n);
                     }
 
-                    println!("ACHTUNG!!! IS PLAIN {}", is_plain);
+                    // println!("LEN {} {}", buf.remaining_mut(), buf.capacity());
+
+                    // reuse the buffer for the response
+                    // self.buf = Some(buf.flip());
+                    self.mut_buf = Some(buf); // DV STUB... REMOVE IT
+
+                    self.interest.remove(Ready::readable());
+                    self.interest.insert(Ready::writable());
+                }
+                Err(e) => {
+                    println!("not implemented; client err={:?}", e);
+                    self.interest.remove(Ready::readable());
+                }
+            };
+
+            let mut buf = self.mut_buf.take().unwrap();
+
+            // Detect the proto is unsecure by MAGIC three bytes of HTTP proto when connection initiated
+            if self.proto == Proto::NONE {
+                let is_plain = {
+                    let tri = String::from_utf8_lossy(&buf[0..3]);
+
+                    let ret = match MAGIC_METHODS.iter().find(|&&magic| magic == tri) {
+                        Some(_) => true,
+                        None => false,
+                    };
+                    ret
+                };
+
+                if is_plain {
+                    // SHOULD TO CHECK "Connection: Upgrade" for websocket
+                    self.proto = Proto::HTTP;
+                    let mut reader = BufReader::new(&buf[..]);
+                    let mut buff = Vec::new();
+
+                    let mut read_bytes = reader
+                        .read_until(b'\n', &mut buff)
+                        .expect("reading from stream won't fail");
+
+                    while read_bytes > 0 {
+                        read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
+                        if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
+                            break;
+                        }
+                    }
+
+                    // let s = match str::from_utf8(&buff) {
+                    //     Ok(v) => v,
+                    //     Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+                    // };
+
+                    // println!("REQUEST: \n{}", s);
+
+                    let mut headers = [httparse::EMPTY_HEADER; 16];
+                    let mut req = httparse::Request::new(&mut headers);
+                    let _ = req.parse(&buff);
+
+                    println!("HTTP VERSION HTTP 1.{:?}", req.version.unwrap());
+
+                    let host = match req.headers.iter().find(|&&header| header.name == "Host") {
+                        Some(header) => str::from_utf8(header.value).unwrap(),
+                        None => "",
+                    };
+
+                    // let method = Method::from_str(req.method.unwrap());
+                    let path = req.path.unwrap();
+
+                    // println!("HOST {:?} {:?} {}\n", host, method.unwrap(), path);
+                    println!("HOST {:?} {}\n", host, path);
+
+                // for (_i, elem) in req.headers.iter_mut().enumerate() {
+                //     let s = match str::from_utf8(elem.value) {
+                //         Ok(v) => v,
+                //         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+                //     };
+
+                //     println!("HEADER {:?} {:?}", elem.name, s)
+                // }
+                } else {
+                    // HANDLE SSL-LIKE PROTO
+                    // thread::spawn(move || {
+                    match acceptor.accept(wrapper) {
+                        Ok(stream) => {
+                            println!("GOT ACCEPT FROM HTTPS");
+                            // thread::spawn(move || {
+                            //     println!("ACCEPT HTTPS. REMOTE {:?}", remote_addr);
+                            //     // let router = router.lock();
+                            //     // match router {
+                            //     //     Ok(router) => {
+                            //     //         println!("HERE");
+                            //     //         router.handle(stream, remote_addr)
+                            //     //     }
+                            //     //     Err(e) => println!("lock failed {}", e),
+                            //     // }
+                            // })
+                        }
+                        Err(e) => {
+                            // thread::spawn(move || {
+                            println!("Connection failed: {:?}", e);
+                            // })
+                        }
+                    };
+                    // });
                 }
 
-                // println!("LEN {} {}", buf.remaining_mut(), buf.capacity());
-
-                // reuse the buffer for the response
-                // self.buf = Some(buf.flip());
-                self.mut_buf = Some(buf); // DV STUB... REMOVE IT
-
-                self.interest.remove(Ready::readable());
-                self.interest.insert(Ready::writable());
-            }
-            Err(e) => {
-                println!("not implemented; client err={:?}", e);
-                self.interest.remove(Ready::readable());
+                println!("ACHTUNG!!! IS PLAIN {}", is_plain);
             }
         }
-
-        // // UFCS: resolve "multiple applicable items in scope [E0034]" error
-        // let sock_ref = <TcpStream as Read>::by_ref(&mut self.sock);
-
-        // // Read header
-        // let mut reader = BufReader::new(sock_ref);
-        // let mut buff = Vec::new();
-
-        // let mut read_bytes = reader
-        //     .read_until(b'\n', &mut buff)
-        //     .expect("reading from stream won't fail");
-
-        // while read_bytes > 0 {
-        //     read_bytes = reader.read_until(b'\n', &mut buff).unwrap();
-        //     if read_bytes == 2 && &buff[(buff.len() - 2)..] == b"\r\n" {
-        //         break;
-        //     }
-        // }
-
-        // // let s = match str::from_utf8(&buff) {
-        // //     Ok(v) => v,
-        // //     Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-        // // };
-
-        // // println!("REQUEST: \n{}", s);
-
-        // let mut headers = [httparse::EMPTY_HEADER; 16];
-        // let mut req = httparse::Request::new(&mut headers);
-        // let _ = req.parse(&buff);
-
-        // // println!("HTTP VERSION HTTP 1.{:?}", req.version.unwrap());
-
-        // let host = match req.headers.iter().find(|&&header| header.name == "Host") {
-        //     Some(header) => str::from_utf8(header.value).unwrap(),
-        //     None => "",
-        // };
-
-        // // let method = Method::from_str(req.method.unwrap());
-        // let path = req.path.unwrap();
-
-        // println!("HOST {:?} {:?} {}\n", host, method.unwrap(), path);
-        // println!("HOST {:?} {}\n", host, path);
-
-        // for (_i, elem) in req.headers.iter_mut().enumerate() {
-        //     let s = match str::from_utf8(elem.value) {
-        //         Ok(v) => v,
-        //         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-        //     };
-
-        //     println!("HEADER {:?} {:?}", elem.name, s)
-        // }
 
         // self.interest.insert(Ready::writable());
         // self.interest.remove(Ready::readable());
