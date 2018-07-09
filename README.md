@@ -3,16 +3,18 @@
 [![Build Status](https://travis-ci.org/ohyo-io/borderland.svg)](https://travis-ci.org/ohyo-io/borderland)
 [![License](https://img.shields.io/badge/License-BSD2-blue.svg)](LICENSE)
 
-Application platform powers Loadbalancers, Microservices and API Gateways
+This project was started from ugly fun [example](ttps://github.com/PritiKumr/rust-httpd). 
+But this project is not a simple HTTP load balncer. We dont need it. We need to balance our application payload. 
+So let we use somthing like a application bus to communicate with application logic.
 
+Also there standard practice to use external crates(modules,libraries). 
+But lot of them suffer from overprogramming, not clear implementation of specifications and unnecessary extra functionality. 
+So i liked the starter point of project and i would like to use less external code in that project. 
+Because "less code" is mean less errors and faster executon, which is main goal.
 
 <p align="center">
     <img src="https://raw.githubusercontent.com/wiki/ohyo-io/borderland/images/logo_borderland.png" alt="Borderland logo" width="256" />
 </p>
-
-This project was started from ugly fun [example](ttps://github.com/PritiKumr/rust-httpd). But this project is not a simple HTTP load balncer. We dont need it. We need to balance our application payload. So let we use somthing like a application bus to communicate with application logic.
-
-Also there standard practice to use external crates(modules,libraries). But lot of them suffer from overprogramming, not clear implementation of specifications and unnecessary extra functionality. So i liked the starter point of project and i would like to use less external code in that project. Because "less code" is mean less errors and faster executon, which is main goal.
 
 ## Full Documentation
 
@@ -32,7 +34,8 @@ Visit `locahost:8080` from your browser.
 
 1.  **Say hello world** - visit `localhost:8888/api/v1`
 
-2.  **Serve static files** - visit `localhost:8888/files/index.html` - this will serve the `index.html` file from the `www` folder in the repo root. Place any other file inside `www` and they can be served similarly (using the `/files` prefix - this will be configurable by the user in future, just like in Apache and Nginx).
+2.  **Serve static files** - visit `localhost:8888/files/index.html` - this will serve the `index.html` file from the `www` folder in the repo root. 
+Place any other file inside `www` and they can be served similarly (using the `/files` prefix - this will be configurable by the user in future, just like in Apache and Nginx).
 
 ## Roadmap
 
